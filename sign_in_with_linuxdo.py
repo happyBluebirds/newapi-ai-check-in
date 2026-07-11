@@ -165,7 +165,19 @@ class LinuxDoSignIn:
                             page_title = await page.title()
                             page_content = await page.content()
 
-                            if "Just a moment" in page_title or "Checking your browser" in page_content:
+                            # Linux.do 的 Cloudflare 页面文案会随挑战模板变化；同时识别页面标题、提示语和挑战脚本标记。
+                            cloudflare_challenge = any(
+                                marker in f"{page_title}\n{page_content}"
+                                for marker in (
+                                    "Just a moment",
+                                    "Checking your browser",
+                                    "Enable JavaScript and cookies to continue",
+                                    "cdn-cgi/challenge-platform",
+                                    "_cf_chl_opt",
+                                )
+                            )
+                            # 命中挑战页时先完成验证，否则后续填写账号会在不存在的登录输入框上超时。
+                            if cloudflare_challenge:
                                 print(f"ℹ️ {self.account_name}: Cloudflare challenge detected, auto-solving...")
                                 try:
                                     await solver.solve_captcha(
@@ -176,6 +188,8 @@ class LinuxDoSignIn:
                                 except Exception as solve_err:
                                     print(f"⚠️ {self.account_name}: Auto-solve failed: {solve_err}")
 
+                            # 验证完成后等待 Discourse 登录表单，超时信息可直接区分 Cloudflare 阻断与账号错误。
+                            await page.wait_for_selector("#login-account-name", state="visible", timeout=60000)
                             await page.fill("#login-account-name", self.username)
                             await page.wait_for_timeout(2000)
                             await page.fill("#login-account-password", self.password)
