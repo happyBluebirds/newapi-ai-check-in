@@ -117,6 +117,29 @@ class LinuxDoSignIn:
                             print(f"ℹ️ {self.account_name}: Checking login status at {oauth_url}")
                             # 直接访问授权页面检查是否已登录
                             response = await page.goto(oauth_url, wait_until="domcontentloaded")
+                            # connect.linux.do has an independent Cloudflare policy from linux.do.
+                            # Solve its OAuth challenge before deciding whether the restored login session is valid.
+                            oauth_page_title = await page.title()
+                            oauth_page_content = await page.content()
+                            oauth_cloudflare_challenge = any(
+                                marker in f"{page.url}\n{oauth_page_title}\n{oauth_page_content}"
+                                for marker in (
+                                    "__cf_chl_rt_tk",
+                                    "Just a moment",
+                                    "Checking your browser",
+                                    "Enable JavaScript and cookies to continue",
+                                    "cdn-cgi/challenge-platform",
+                                    "_cf_chl_opt",
+                                )
+                            )
+                            # A solved challenge continues the existing OAuth navigation with the same state value.
+                            if oauth_cloudflare_challenge:
+                                print(f"ℹ️ {self.account_name}: OAuth Cloudflare challenge detected, auto-solving...")
+                                await solver.solve_captcha(
+                                    captcha_container=page,
+                                    captcha_type=CaptchaType.CLOUDFLARE_INTERSTITIAL,
+                                )
+                                await page.wait_for_timeout(10000)
                             # Discourse SSO may first return /session/sso_provider and then continue via JavaScript.
                             # Give the restored session time to reach either the approval page or provider callback.
                             if "/session/sso_provider" in page.url:
