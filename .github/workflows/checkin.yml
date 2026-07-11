@@ -1,4 +1,5 @@
 name: newapi.ai 自动签到
+
 on:
   schedule:
     - cron: '0 */8 * * *'
@@ -27,7 +28,10 @@ jobs:
     runs-on: windows-2025
     environment: production
     env:
+      
       PYTHONIOENCODING: utf-8
+            # 首次无缓存时允许使用已配置账号登录 Linux.do，并由后续缓存步骤保存会话状态。
+      RUN_LINUXDO_LOGIN_MANUAL: 'true'
     steps:
     - name: set beijing timezone
       uses: szenius/set-timezone@v2.0
