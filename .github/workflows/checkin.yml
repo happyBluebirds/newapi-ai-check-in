@@ -25,7 +25,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    runs-on: windows-2025
+    # Linux.do 会拦截 GitHub 托管机房 IP；仅允许本机专用 Runner 执行含生产凭据的签到任务。
+    runs-on: [self-hosted, Windows, X64, linuxdo]
     environment: production
     env:
       
