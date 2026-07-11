@@ -6,6 +6,7 @@
 import json
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Dict, Generator, AsyncGenerator, List, Literal
 
 from utils.get_check_in_status import newapi_check_in_status
@@ -863,7 +864,22 @@ class AppConfig:
             except Exception as e:
                 print(f"⚠️ Error loading {providers_env}: {e}, using default configuration only")
         else:
-            print(f"⚠️ {providers_env} environment variable not found, using default configuration only")
+            # Fork 仓库可直接维护根目录 PROVIDERS.json；环境变量未配置时将其作为非敏感 provider 配置来源。
+            providers_file = Path(__file__).resolve().parent.parent / "PROVIDERS.json"
+            if providers_file.is_file():
+                try:
+                    # 文件格式与 PROVIDERS 环境变量一致，复用同一解析与覆盖语义。
+                    providers_data = json.loads(providers_file.read_text(encoding="utf-8"))
+                    for name, data in providers_data.items():
+                        try:
+                            providers[name] = ProviderConfig.from_dict(name, data)
+                        except Exception as e:
+                            print(f'⚠️ Failed to parse provider "{name}" from {providers_file.name}: {e}, skipping')
+                    print(f"ℹ️ Loaded {len(providers_data)} custom provider(s) from {providers_file.name}")
+                except (OSError, json.JSONDecodeError) as e:
+                    print(f"⚠️ Failed to load {providers_file.name}: {e}, using default configuration only")
+            else:
+                print(f"⚠️ {providers_env} environment variable not found, using default configuration only")
 
         return providers
 
