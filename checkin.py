@@ -983,6 +983,7 @@ class CheckIn:
         cookies: dict,
         common_headers: dict,
         api_user: str | int,
+        impersonate: str | None = None,
     ) -> tuple[bool, dict]:
         """使用已有 cookies 执行签到操作
         
@@ -990,6 +991,7 @@ class CheckIn:
             cookies: cookies 字典
             common_headers: 公用请求头（包含 User-Agent 和可能的 Client Hints）
             api_user: API 用户 ID
+            impersonate: OAuth 阶段已选定的 curl_cffi 指纹；未传入时根据 User-Agent 推断
         """
         print(
             f"ℹ️ {self.account_name}: Executing check-in with existing cookies (using proxy: {'true' if self.http_proxy_config else 'false'})"
@@ -997,7 +999,8 @@ class CheckIn:
 
         # 根据 User-Agent 自动推断 impersonate 值
         user_agent = common_headers.get("User-Agent", "")
-        impersonate = get_curl_cffi_impersonate(user_agent) if user_agent else "firefox135"
+        # Reuse the OAuth transport fingerprint when supplied so WAF cookies and TLS behavior stay consistent.
+        impersonate = impersonate or (get_curl_cffi_impersonate(user_agent) if user_agent else "firefox135")
         
         session = curl_requests.Session(impersonate=impersonate, proxy=self.http_proxy_config, timeout=30)
         if impersonate:
@@ -1060,8 +1063,9 @@ class CheckIn:
                     )
                 if not topup_result.get("success"):
                     error_msg = topup_result.get("error") or "Topup failed"
-                    print(f"❌ {self.account_name}: Topup failed, stopping check-in process")
-                    return False, {"error": error_msg}
+                    # CDK topup is an optional post-check-in benefit. Do not erase a valid login/check-in result
+                    # when the separate topup service is unavailable or needs its own renewed authorization.
+                    print(f"⚠️ {self.account_name}: Optional topup failed, keeping check-in result: {error_msg}")
 
             user_info = await self.get_user_info(session, headers)
             if user_info and user_info.get("success"):

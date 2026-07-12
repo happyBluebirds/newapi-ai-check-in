@@ -195,5 +195,12 @@
     "origin": "https://jiuuij.de5.net",
     "linuxdo_client_id": "Sof7UgAZT2JTbXTlz8djq3eACVf2alFf",
     "bypass_method": "waf_cookies"
+  },
+  "elysiver": {
+    "origin": "https://elysiver.h-e.top",
+    "linuxdo_client_id": "E2eaCQVl9iecd4aJBeTKedXfeKiJpSPF",
+    "linuxdo_auth_redirect_path": "/oauth-redirect.html**",
+    "check_in_path": null,
+    "bypass_method": null
   }
 }

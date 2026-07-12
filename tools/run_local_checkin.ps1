@@ -24,9 +24,7 @@ $Accounts = @(
     @{ name = "Elysiver"; provider = "elysiver"; "linux.do" = $true },
     @{ name = "2020111"; provider = "2020111_xyz"; "linux.do" = $true },
     @{ name = "7r.fit"; provider = "sevenr"; "linux.do" = $true },
-    @{ name = "100xLabs"; provider = "100xlabs"; "linux.do" = $true },
     @{ name = "沉醉"; provider = "chenzui"; "linux.do" = $true },
-    @{ name = "AnyRouter"; provider = "anyrouter"; "linux.do" = $true },
     @{ name = "Jiuuij"; provider = "jiuuij"; "linux.do" = $true },
     @{ name = "X666"; provider = "x666"; "linux.do" = $true }
 )
