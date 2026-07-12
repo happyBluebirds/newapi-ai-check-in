@@ -179,5 +179,21 @@
     "linuxdo_auth_redirect_path": "/oauth/**",
     "aliyun_captcha": false,
     "bypass_method": null
+  },
+  "sevenr": {
+    "origin": "https://api.7r.fit",
+    "linuxdo_client_id": "sLaKI5OvKZwYr7ajYFgbrykuODoRRL4F"
+  },
+  "100xlabs": {
+    "origin": "https://sub.100xlabs.space"
+  },
+  "chenzui": {
+    "origin": "https://chybenzun.top",
+    "bypass_method": "waf_cookies"
+  },
+  "jiuuij": {
+    "origin": "https://jiuuij.de5.net",
+    "linuxdo_client_id": "Sof7UgAZT2JTbXTlz8djq3eACVf2alFf",
+    "bypass_method": "waf_cookies"
   }
 }

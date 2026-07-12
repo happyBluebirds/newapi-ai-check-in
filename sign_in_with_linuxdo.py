@@ -5,7 +5,7 @@
 
 import json
 import os
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urljoin, urlparse, parse_qs
 from camoufox.async_api import AsyncCamoufox
 from playwright_captcha import CaptchaType, ClickSolver, FrameworkType
 from utils.browser_utils import filter_cookies, take_screenshot, save_page_content_to_file
@@ -270,7 +270,12 @@ class LinuxDoSignIn:
 
                         if allow_btn_ele:
                             print(f"✅ {self.account_name}: Approve button found, proceeding to authorization")
-                            await allow_btn_ele.click()
+                            # Cloudflare can hold Playwright's click action even when this ordinary approval link is
+                            # actionable. Navigate to its server-generated href and validate the OAuth callback below.
+                            approve_href = await allow_btn_ele.get_attribute("href")
+                            if not approve_href:
+                                raise RuntimeError("Linux.do approval link has no href")
+                            await page.goto(urljoin(page.url, approve_href), wait_until="domcontentloaded")
 
                             # 在等待重定向之前，先检查是否遇到 Cloudflare 挑战
                             try:
