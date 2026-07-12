@@ -1,8 +1,7 @@
 name: newapi.ai 自动签到
 
 on:
-  schedule:
-    - cron: '0 */8 * * *'
+  # 上游 WAF 会拦截 GitHub Runner；关闭定时触发，仅保留人工排障入口。
   workflow_dispatch:
     inputs:
       accounts:
