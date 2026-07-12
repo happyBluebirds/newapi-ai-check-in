@@ -11,6 +11,7 @@ import os
 import tempfile
 from urllib.parse import urlparse, urlencode
 
+import requests as standard_requests
 from curl_cffi import requests as curl_requests
 from camoufox.async_api import AsyncCamoufox
 from utils.config import AccountConfig, ProviderConfig
@@ -465,20 +466,32 @@ class CheckIn:
                         if captcha_check:
                             await page.wait_for_timeout(3000)
 
-                    response = await page.evaluate(
-                        f"""async () => {{
-                            try{{
-                                const response = await fetch('{self.provider_config.get_auth_state_url()}');
-                                const data = await response.json();
-                                return data;
-                            }}catch(e){{
-                                return {{
-                                    success: false,
-                                    message: e.message
-                                }};
-                            }}
-                        }}"""
-                    )
+                    # Aliyun WAF may reload the page immediately after setting its challenge cookie,
+                    # destroying the first JavaScript context. Retry only that transient transition.
+                    response = None
+                    for browser_attempt in range(1, 4):
+                        try:
+                            response = await page.evaluate(
+                                f"""async () => {{
+                                    try{{
+                                        const response = await fetch('{self.provider_config.get_auth_state_url()}');
+                                        const data = await response.json();
+                                        return data;
+                                    }}catch(e){{
+                                        return {{success: false, message: e.message}};
+                                    }}
+                                }}"""
+                            )
+                            break
+                        except Exception as browser_state_error:
+                            if "Execution context was destroyed" not in str(browser_state_error) or browser_attempt == 3:
+                                raise
+                            print(
+                                f"⚠️ {self.account_name}: WAF reloaded browser context, "
+                                f"retrying auth state ({browser_attempt}/3)"
+                            )
+                            await page.wait_for_load_state("domcontentloaded")
+                            await page.wait_for_timeout(3000)
 
                     if response and "data" in response:
                         cookies = await browser.cookies()
@@ -511,11 +524,39 @@ class CheckIn:
             headers: 请求头
         """
         try:
-            response = session.get(
-                self.provider_config.get_auth_state_url(),
-                headers=headers,
-                timeout=30,
-            )
+            # Windows curl_cffi occasionally reports a transient BoringSSL "invalid library" error.
+            # Reuse the same cookie-bearing session so WAF clearance remains valid across retries.
+            response = None
+            for tls_attempt in range(1, 4):
+                try:
+                    response = session.get(
+                        self.provider_config.get_auth_state_url(),
+                        headers=headers,
+                        timeout=30,
+                    )
+                    break
+                except Exception as request_error:
+                    tls_error_markers = ("TLS connect error", "OPENSSL_internal", "invalid library")
+                    is_transient_tls = any(marker in str(request_error) for marker in tls_error_markers)
+                    if not is_transient_tls:
+                        raise
+                    if tls_attempt == 3:
+                        # Standard requests uses Windows/OpenSSL TLS without curl_cffi's impersonation layer.
+                        # Preserve WAF cookies and headers; the response contract is requests-compatible below.
+                        print(f"⚠️ {self.account_name}: Falling back to standard TLS client")
+                        fallback_session = standard_requests.Session()
+                        fallback_session.cookies.update(dict(session.cookies))
+                        response = fallback_session.get(
+                            self.provider_config.get_auth_state_url(),
+                            headers=headers,
+                            timeout=30,
+                        )
+                        break
+                    print(
+                        f"⚠️ {self.account_name}: Transient TLS failure, "
+                        f"retrying auth state ({tls_attempt}/3)"
+                    )
+                    await asyncio.sleep(2 * tls_attempt)
 
             if response.status_code == 200:
                 json_data = response_resolve(response, "get_auth_state", self.account_name)
@@ -582,6 +623,12 @@ class CheckIn:
                 "error": f"Failed to get auth state: HTTP {response.status_code}",
             }
         except Exception as e:
+            # curl_cffi 0.14 can intermittently fail TLS negotiation on Windows. The browser path
+            # uses the same site origin and preserves WAF compatibility while obtaining fresh state cookies.
+            tls_error_markers = ("TLS connect error", "OPENSSL_internal", "invalid library")
+            if any(marker in str(e) for marker in tls_error_markers):
+                print(f"⚠️ {self.account_name}: curl_cffi TLS failed, retrying auth state with browser")
+                return await self.get_auth_state_with_browser()
             return {
                 "success": False,
                 "error": f"Failed to get auth state, {e}",

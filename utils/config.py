@@ -77,7 +77,8 @@ class ProviderConfig:
             origin=data["origin"],
             login_path=data.get("login_path", "/login"),
             status_path=data.get("status_path", "/api/status"),
-            auth_state_path=data.get("auth_state_path", "api/oauth/state"),
+            # API paths must remain origin-relative; omitting the slash produces hosts like example.comapi.
+            auth_state_path=data.get("auth_state_path", "/api/oauth/state"),
             check_in_path=data.get("check_in_path"),
             check_in_status=data.get("check_in_status", False),
             user_info_path=data.get("user_info_path", "/api/user/self"),

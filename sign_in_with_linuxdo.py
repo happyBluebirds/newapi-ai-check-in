@@ -263,10 +263,16 @@ class LinuxDoSignIn:
                             return False, {"error": "Linux.do authorization page navigation failed"}, None
 
                     try:
-                        # 等待授权按钮出现，最多等待30秒
-                        print(f"ℹ️ {self.account_name}: Waiting for authorization button...")
-                        await page.wait_for_selector('a[href^="/oauth2/approve"]', timeout=30000)
-                        allow_btn_ele = await page.query_selector('a[href^="/oauth2/approve"]')
+                        # Previously approved clients may return directly to the provider without rendering a button.
+                        authorization_already_completed = page.url.startswith(self.provider_config.origin)
+                        allow_btn_ele = None
+                        if authorization_already_completed:
+                            print(f"✅ {self.account_name}: Linux.do returned directly to provider callback")
+                        else:
+                            # 等待授权按钮出现，最多等待30秒
+                            print(f"ℹ️ {self.account_name}: Waiting for authorization button...")
+                            await page.wait_for_selector('a[href^="/oauth2/approve"]', timeout=30000)
+                            allow_btn_ele = await page.query_selector('a[href^="/oauth2/approve"]')
 
                         if allow_btn_ele:
                             print(f"✅ {self.account_name}: Approve button found, proceeding to authorization")
@@ -303,7 +309,7 @@ class LinuxDoSignIn:
                                     
                             except Exception as e:
                                 print(f"⚠️ {self.account_name}: Error checking Cloudflare challenge: {e}")
-                        else:
+                        elif not authorization_already_completed:
                             print(f"❌ {self.account_name}: Approve button not found")
                             await take_screenshot(page, "approve_button_not_found_bypass", self.account_name)
                             return False, {"error": "Linux.do allow button not found"}, None
@@ -322,10 +328,13 @@ class LinuxDoSignIn:
                     try:                  
                         # 先检查是否已跳转到 /console/token（Cloudflare 挑战等待期间可能已完成跳转）
                         console_token_pattern = f"**{self.provider_config.origin}/console/token**"
-                        try:
+                        if page.url.startswith(self.provider_config.origin):
+                            print(f"ℹ️ {self.account_name}: Provider callback already completed: {page.url}")
+                        else:
+                          try:
                             await page.wait_for_url(console_token_pattern, timeout=3000)
                             print(f"ℹ️ {self.account_name}: Already redirected to /console/token, skipping redirect_pattern wait")
-                        except Exception:
+                          except Exception:
                             # 未跳转到 /console/token，使用配置的 redirect_pattern 等待
                             redirect_pattern = self.provider_config.get_linuxdo_auth_redirect_pattern()
                             print(f"ℹ️ {self.account_name}: Waiting for redirect to: {redirect_pattern}")
@@ -379,6 +388,30 @@ class LinuxDoSignIn:
                             print(f"⚠️ {self.account_name}: User data not found in localStorage")
                     except Exception as e:
                         print(f"⚠️ {self.account_name}: Error reading user from localStorage: {e}")
+
+                    # Some NewAPI deployments consume the OAuth code server-side and redirect to /login without
+                    # hydrating localStorage. Confirm the resulting browser session through the authenticated API.
+                    if not api_user and current_url.startswith(self.provider_config.origin):
+                        try:
+                            user_info_url = urljoin(
+                                f"{self.provider_config.origin}/",
+                                self.provider_config.user_info_path.lstrip("/"),
+                            )
+                            session_check = await page.evaluate(
+                                """async (url) => {
+                                    const response = await fetch(url, {credentials: 'include'});
+                                    return {status: response.status, text: await response.text()};
+                                }""",
+                                user_info_url,
+                            )
+                            if session_check.get("status") == 200:
+                                session_payload = json.loads(session_check.get("text") or "{}")
+                                session_user = session_payload.get("data") or {}
+                                api_user = session_user.get("id")
+                                if api_user:
+                                    print(f"✅ {self.account_name}: Browser session confirmed via user API: {api_user}")
+                        except Exception as session_error:
+                            print(f"⚠️ {self.account_name}: Browser session check failed: {session_error}")
 
                     if api_user:
                         print(f"✅ {self.account_name}: OAuth authorization successful")
